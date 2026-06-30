@@ -1,0 +1,70 @@
+##
+## Runs integration tests against real services — no mocks.
+## Postgres and Redis spin up as Docker sidecars alongside the job.
+## Health checks block execution until both containers are ready.
+## Reports are uploaded even on failure so you always have evidence.
+##
+
+name: "02 · Integration Tests"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+
+    services:  # docker containers that start alongside the job — accessible via localhost
+      postgres:
+        image: postgres:15  # docker image to pull
+        env:  # env vars passed into the container — postgres reads these to set up the db
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432  # map container port to runner port — tests connect via localhost:5432
+        options: >-  # extra docker run flags
+          --health-cmd pg_isready  # command that returns 0 when postgres is ready
+          --health-interval 10s  # check every 10 seconds
+          --health-timeout 5s  # fail the check if it takes more than 5s
+          --health-retries 5  # GHA blocks step execution until this passes
+
+      redis:
+        image: redis:7-alpine  # lightweight redis image
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"  # returns PONG when redis is ready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"  # caching works here exactly the same as in any other workflow
+      - run: npm install
+
+      - name: Run integration tests
+        id: tests
+        run: npm run test:integration
+        continue-on-error: true  # capture the outcome without failing the job yet — we want the report uploaded first
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb  # services are reachable via localhost on their mapped port
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload test results
+        if: always()  # upload even if tests failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/
+          retention-days: 14
+
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'  # fail the job now that the report is safely uploaded
+        run: exit 1  # exit 1 marks the step and job as failed

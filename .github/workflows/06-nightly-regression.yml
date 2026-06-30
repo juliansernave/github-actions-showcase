@@ -1,0 +1,66 @@
+##
+## Runs every weekday at 02:00 UTC — full regression suite across all browsers.
+## Matrix keeps all three browsers running in parallel so the suite finishes faster.
+## Uses the composite action for setup, same as everywhere else.
+## Only notifies Slack on scheduled runs — on manual dispatch you already know the result.
+## Reports are kept for 30 days, longer than regular CI runs.
+##
+
+name: "06 · Nightly Regression"
+
+on:
+  schedule:
+    - cron: "0 2 * * 1-5"  # 02:00 UTC Mon–Fri — GHA cron is always UTC, no timezone support
+  workflow_dispatch:  # also allows manual trigger so you can test this workflow without waiting for the cron
+
+jobs:
+  regression:
+    name: "Regression · ${{ matrix.browser }}"
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false  # run all browsers even if one fails — nightly results are most useful when complete
+      matrix:
+        browser: [chromium, firefox, webkit]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-test-env  # composite action handles node setup, install, and step summary
+        with:
+          node-version: "20"
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}  # one browser per matrix cell
+
+      - name: Run regression suite
+        id: tests  # id needed to read this step's outcome in later steps
+        run: npm run test:e2e
+        continue-on-error: true  # don't fail the job yet — we want to upload the report and notify Slack first
+        env:
+          BROWSER: ${{ matrix.browser }}
+          CI: "true"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-report-${{ matrix.browser }}-${{ github.run_id }}  # unique per browser and run
+          path: playwright-report/
+          retention-days: 30  # keep nightly reports longer than regular CI runs
+
+      - name: Post to Slack
+        if: github.event_name == 'schedule'  # skip this on manual dispatch — the person who triggered it already knows
+        env:
+          OUTCOME: ${{ steps.tests.outcome }}  # 'success' or 'failure' from the test step
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}  # direct link to this run
+        run: |
+          echo "Nightly [${{ matrix.browser }}]: $OUTCOME — $RUN_URL"
+          # curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+          #   -H 'Content-Type: application/json' \
+          #   -d "{\"text\": \"Nightly *${{ matrix.browser }}* ${OUTCOME} → ${RUN_URL}\"}"
+
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'  # fail the job now that the report is safely uploaded
+        run: exit 1
