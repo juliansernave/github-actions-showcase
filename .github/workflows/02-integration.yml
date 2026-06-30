@@ -25,18 +25,19 @@ jobs:
           POSTGRES_DB: testdb
         ports:
           - 5432:5432  # map container port to runner port — tests connect via localhost:5432
-        options: >-  # extra docker run flags
-          --health-cmd pg_isready  # command that returns 0 when postgres is ready
-          --health-interval 10s  # check every 10 seconds
-          --health-timeout 5s  # fail the check if it takes more than 5s
-          --health-retries 5  # GHA blocks step execution until this passes
+        # options are docker run flags — comments can't go inside >- blocks, they'd be passed to docker
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
       redis:
         image: redis:7-alpine  # lightweight redis image
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli ping"  # returns PONG when redis is ready
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
