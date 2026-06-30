@@ -1,0 +1,112 @@
+name: "11 · Manual Test Run (workflow_dispatch)"
+
+# Key concepts:
+#   workflow_dispatch    — manual trigger from the GitHub Actions UI (or API)
+#   input types          — choice (dropdown), boolean (checkbox), string (text field)
+#   ${{ inputs.* }}      — reference input values in steps and conditions
+#
+# When you push this to GitHub, the Actions tab shows a "Run workflow" button
+# with a real form — dropdowns, checkboxes, and text fields.
+# No code changes needed to run a different browser or suite.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - production
+          - local
+
+      browser:
+        description: "Browser to test with"
+        type: choice
+        required: true
+        default: chromium
+        options:
+          - chromium
+          - firefox
+          - webkit
+          - all
+
+      test-suite:
+        description: "Test suite to run"
+        type: choice
+        default: smoke
+        options:
+          - smoke
+          - regression
+          - full
+
+      headless:
+        description: "Run in headless mode"
+        type: boolean
+        default: true
+
+      test-filter:
+        description: "Grep pattern to filter tests (optional, e.g. 'health')"
+        type: string
+        required: false
+
+jobs:
+  run-tests:
+    name: "${{ inputs.test-suite }} · ${{ inputs.browser }} · ${{ inputs.environment }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm install
+
+      - name: Install Playwright browser(s)
+        run: |
+          if [ "${{ inputs.browser }}" = "all" ]; then
+            npx playwright install --with-deps
+          else
+            npx playwright install --with-deps ${{ inputs.browser }}
+          fi
+
+      - name: Run ${{ inputs.test-suite }} tests
+        env:
+          BROWSER: ${{ inputs.browser == 'all' && '' || inputs.browser }}
+          TARGET_ENV: ${{ inputs.environment }}
+          HEADLESS: ${{ inputs.headless }}
+          # Pass the filter through an env var — never interpolate user input
+          # directly into a shell command (script injection risk)
+          TEST_FILTER: ${{ inputs.test-filter }}
+          CI: "true"
+        run: |
+          if [ -n "$TEST_FILTER" ]; then
+            npm run test:e2e -- --grep "$TEST_FILTER"
+          else
+            npm run test:e2e
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ inputs.browser }}-${{ inputs.environment }}-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 7
+
+  # Extra step: alert the team if someone runs against production
+  production-alert:
+    runs-on: ubuntu-latest
+    needs: run-tests
+    if: inputs.environment == 'production'
+    steps:
+      - name: Notify team of manual production test run
+        run: |
+          echo "📢 Production tests triggered manually"
+          echo "Actor: ${{ github.actor }}"
+          echo "Suite: ${{ inputs.test-suite }}"
+          echo "Browser: ${{ inputs.browser }}"

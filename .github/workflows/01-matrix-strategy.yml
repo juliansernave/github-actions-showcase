@@ -1,0 +1,63 @@
+name: "01 · Matrix Strategy"
+
+# Key concepts:
+#   matrix       — generate N jobs from a combination of values
+#   fail-fast    — whether one failure cancels the rest
+#   exclude      — drop specific matrix combinations
+#   max-parallel — cap concurrent runners (cost control)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e-tests:
+    name: "E2E · ${{ matrix.browser }} on ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # fail-fast: false is the most important QA-specific setting here.
+      # The default is true — meaning a single failing browser cancels all other
+      # matrix cells mid-run. For test suites, you almost always want all results.
+      fail-fast: false
+      max-parallel: 4   # cap cost: at most 4 runners at once
+
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        browser: [chromium, firefox, webkit]
+        exclude:
+          # webkit is not supported on Windows — drop those 2 cells
+          - os: windows-latest
+            browser: webkit
+
+      # Result: 4 jobs (2×3 minus 2 excluded) run in parallel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm install
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run E2E tests — ${{ matrix.browser }}
+        run: npm run test:e2e
+        env:
+          BROWSER: ${{ matrix.browser }}
+          CI: "true"
+
+      # Upload each browser's report as a separate artifact.
+      # if: always() ensures upload even when some browsers fail.
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.browser }}-${{ matrix.os }}
+          path: playwright-report/
+          retention-days: 7

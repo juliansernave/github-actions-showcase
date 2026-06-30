@@ -1,0 +1,63 @@
+name: "05 · Reusable Workflow (Definition)"
+
+# This file is ONLY triggered via workflow_call — never directly.
+# Think of it as a function: accepts typed inputs, uses secrets, returns outputs.
+#
+# Caller: 05-reusable-workflow-caller.yml
+#
+# Why reusable workflows?
+#   A QA team running the same test suite across 8 services shouldn't
+#   copy-paste the same 60-line job definition into every repo. Define once,
+#   call from anywhere.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment (staging | production)"
+        type: string
+        required: true
+      test-suite:
+        description: "Which suite to run: smoke | regression | full"
+        type: string
+        default: "smoke"
+      node-version:
+        description: "Node.js version"
+        type: string
+        default: "20"
+
+    # secrets: inherit (in the caller) automatically forwards all caller secrets.
+    # You can also declare specific secrets here with required: true/false
+    # if you want the interface to be explicit.
+
+    outputs:
+      test-summary:
+        description: "Human-readable pass/fail string, usable by the caller"
+        value: ${{ jobs.test.outputs.summary }}
+
+jobs:
+  test:
+    name: "[${{ inputs.environment }}] ${{ inputs.test-suite }}"
+    runs-on: ubuntu-latest
+
+    outputs:
+      summary: ${{ steps.run.outputs.summary }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+
+      - run: npm install
+
+      - name: Run ${{ inputs.test-suite }} suite
+        id: run
+        run: |
+          echo "Target: ${{ inputs.environment }} | Suite: ${{ inputs.test-suite }}"
+          npm run test:api
+          echo "summary=${{ inputs.test-suite }} PASSED on ${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+        env:
+          TARGET_ENV: ${{ inputs.environment }}

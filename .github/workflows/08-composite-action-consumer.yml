@@ -1,0 +1,49 @@
+name: "08 · Composite Action"
+
+# Key concepts:
+#   uses: ./.github/actions/<name>  — call a local composite action
+#   Composite action = reusable sequence of steps (same repo, same job)
+#   vs Reusable workflow = reusable entire jobs (cross-repo, own runner)
+#
+# Use composite actions to DRY up the 4-6 setup steps every test job repeats.
+# See .github/actions/setup-test-env/action.yml for the action definition.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-node20:
+    name: "Tests — Node 20"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # One step replaces ~5 steps (setup-node, install, .env, summary)
+      - name: Setup test environment
+        id: setup
+        uses: ./.github/actions/setup-test-env
+        with:
+          node-version: "20"
+          install-command: "npm install"
+
+      - name: Show composite action outputs
+        run: |
+          echo "Cache hit:    ${{ steps.setup.outputs.cache-hit }}"
+          echo "Node version: ${{ steps.setup.outputs.node-version-used }}"
+
+      - run: npm test
+
+  test-node18:
+    name: "Tests — Node 18"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same action, different input — the abstraction pays off here
+      - uses: ./.github/actions/setup-test-env
+        with:
+          node-version: "18"
+
+      - run: npm test

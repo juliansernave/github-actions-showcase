@@ -1,0 +1,60 @@
+name: "Setup Test Environment"
+description: >
+  Installs Node.js with cache, runs the install command, optionally writes a
+  .env.test file, and posts a step summary. Use this to DRY up the 4-6 setup
+  steps that every test job in the repo repeats.
+
+inputs:
+  node-version:
+    description: "Node.js version to use"
+    default: "20"
+  working-directory:
+    description: "Directory to run install command in"
+    default: "."
+  install-command:
+    description: "Command to install dependencies"
+    default: "npm install"
+  env-vars:
+    description: "Optional .env.test content (pass as a secret)"
+    required: false
+
+outputs:
+  cache-hit:
+    description: "Whether the npm cache was restored (true/false)"
+    value: ${{ steps.setup-node.outputs.cache-hit }}
+  node-version-used:
+    description: "Resolved Node.js version"
+    value: ${{ steps.setup-node.outputs.node-version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      id: setup-node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: "npm"
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.install-command }}
+
+    # Only runs if env-vars input was provided
+    - name: Write .env.test
+      if: ${{ inputs.env-vars != '' }}
+      shell: bash
+      run: printf '%s' "$ENV_CONTENT" > .env.test
+      env:
+        ENV_CONTENT: ${{ inputs.env-vars }}
+
+    - name: Post step summary
+      shell: bash
+      run: |
+        echo "## ⚙️ Setup Complete" >> $GITHUB_STEP_SUMMARY
+        echo "| | |" >> $GITHUB_STEP_SUMMARY
+        echo "|-|-|" >> $GITHUB_STEP_SUMMARY
+        echo "| Node.js | \`${{ steps.setup-node.outputs.node-version }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Cache hit | \`${{ steps.setup-node.outputs.cache-hit }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Install command | \`${{ inputs.install-command }}\` |" >> $GITHUB_STEP_SUMMARY
