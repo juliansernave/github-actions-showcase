@@ -35,8 +35,9 @@ jobs:
       # SAFE: route untrusted data through an env var — the shell sees it as a string
       - name: Use env var for user-controlled data
         env:
-          PR_TITLE: ${{ github.event.pull_request.title || 'no PR' }}
-        run: echo "PR title: $PR_TITLE"
+          PR_TITLE: "${{ github.event.pull_request.title || 'no PR' }}"
+        run: |
+          echo "PR title: $PR_TITLE"
 
   # OIDC: request a short-lived cloud token instead of storing a static secret.
   # Uncomment and configure role-to-assume to use with AWS.
