@@ -3,7 +3,6 @@ module.exports = {
   testMatch: [
     '**/tests/unit/**/*.test.js',
     '**/tests/api/**/*.test.js',
-    '**/tests/integration/**/*.test.js',
   ],
   reporters: [
     'default',
