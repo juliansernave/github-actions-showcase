@@ -1,17 +1,5 @@
 name: "06 · Conditionals & Error Handling"
 
-# Key concepts:
-#   continue-on-error  — let a step fail without failing the job
-#   outcome vs conclusion:
-#     outcome     = what actually happened (success | failure | skipped | cancelled)
-#     conclusion  = what GHA reports AFTER applying continue-on-error
-#                   (always 'success' when continue-on-error: true)
-#     → Use outcome to distinguish real failures from expected/allowed ones
-#   failure()  — evaluates to true when a previous step/job failed
-#   success()  — evaluates to true when all previous steps/jobs succeeded
-#   always()   — always runs, even after cancellation
-#   cancelled()— only runs when the workflow was cancelled
-
 on:
   push:
     branches: [main]
@@ -28,43 +16,36 @@ jobs:
           cache: "npm"
       - run: npm install
 
-      - name: Run stable unit tests
+      - name: Stable tests
         id: unit
         run: npm run test:unit
 
-      # Known flaky test group — allowed to fail without blocking the pipeline.
-      # outcome will be 'failure' if it fails; conclusion will still be 'success'.
-      - name: Run flaky integration tests
+      - name: Flaky tests
         id: flaky
         continue-on-error: true
         run: npm run test:api
+      # outcome = what actually happened (success/failure)
+      # conclusion = always 'success' when continue-on-error: true
+      # Use outcome to react to real failures, not conclusion
 
-      # Use outcome (not conclusion) to react to real failures
-      - name: Report flaky test status
+      - name: Report flaky result
         if: steps.flaky.outcome == 'failure'
-        run: echo "⚠️ Flaky tests failed this run (non-blocking) — investigate when convenient"
+        run: echo "⚠️ Flaky tests failed this run (non-blocking)"
 
-      - name: All tests passed
-        if: steps.unit.outcome == 'success' && steps.flaky.outcome == 'success'
-        run: echo "✅ All tests green"
-
-      # Cleanup always runs — good for temp files, killing servers, etc.
       - name: Cleanup
         if: always()
-        run: echo "Cleanup done (ran regardless of outcome)"
+        run: echo "Cleanup runs regardless of outcome"
 
-  # This job only runs when test-suite failed
   notify-on-failure:
     runs-on: ubuntu-latest
     needs: test-suite
     if: failure()
     steps:
-      - run: echo "🚨 Pipeline failed — would send Slack/email alert here"
+      - run: echo "🚨 Pipeline failed — notify team"
 
-  # This job always runs and reports the final status
   final-report:
     runs-on: ubuntu-latest
     needs: test-suite
     if: always()
     steps:
-      - run: echo "Pipeline completed — result was ${{ needs.test-suite.result }}"
+      - run: echo "Finished with status — ${{ needs.test-suite.result }}"

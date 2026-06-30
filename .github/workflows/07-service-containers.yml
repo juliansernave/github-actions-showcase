@@ -1,16 +1,5 @@
 name: "07 · Service Containers"
 
-# Key concepts:
-#   services     — Docker containers that start alongside the job runner
-#   options      — Docker flags: health checks, volume mounts, etc.
-#   ports        — map container port to runner port (access via localhost)
-#   health check — GHA waits until the container is ready before running steps
-#
-# Why service containers for QA?
-#   - Run integration tests against a REAL database, not a mock
-#   - Zero external infrastructure — the container is created and destroyed per run
-#   - Multiple services in one job (Postgres + Redis here)
-
 on:
   push:
     branches: [main]
@@ -34,9 +23,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-          --health-start-period 10s
-        # GHA blocks until the health check passes — tests always start
-        # with a ready database, no sleep/retry needed in the test code.
 
       redis:
         image: redis:7-alpine
@@ -50,22 +36,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-
       - run: npm install
 
       - name: Run integration tests
         run: npm run test:integration
         env:
-          # Services are reachable via localhost on the mapped port
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
           REDIS_URL: redis://localhost:6379
-
-      - name: Verify Redis connectivity
-        run: |
-          sudo apt-get install -y redis-tools -q
-          redis-cli -h 127.0.0.1 ping

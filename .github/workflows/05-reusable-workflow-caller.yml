@@ -1,9 +1,5 @@
 name: "05 · Reusable Workflow (Caller)"
 
-# This workflow calls 05-reusable-workflow-definition.yml.
-# Notice: jobs that use 'uses:' cannot have 'steps:' — the entire job
-# is delegated to the reusable workflow.
-
 on:
   push:
     branches: [main]
@@ -11,33 +7,25 @@ on:
 
 jobs:
   smoke-staging:
-    name: "Smoke — staging"
     uses: ./.github/workflows/05-reusable-workflow-definition.yml
     with:
       environment: staging
       test-suite: smoke
-    # secrets: inherit forwards all secrets from this workflow to the reusable one.
-    # Alternative: explicitly map secrets:
-    #   secrets:
-    #     MY_API_KEY: ${{ secrets.MY_API_KEY }}
     secrets: inherit
 
   regression-staging:
-    name: "Regression — staging"
-    needs: smoke-staging          # run after smoke passes
+    needs: smoke-staging
     uses: ./.github/workflows/05-reusable-workflow-definition.yml
     with:
       environment: staging
       test-suite: regression
     secrets: inherit
 
-  # Read outputs from a reusable workflow job
   summarize:
     runs-on: ubuntu-latest
     needs: [smoke-staging, regression-staging]
     if: always()
     steps:
-      - name: Print summaries from reusable workflows
-        run: |
+      - run: |
           echo "Smoke:      ${{ needs.smoke-staging.outputs.test-summary }}"
           echo "Regression: ${{ needs.regression-staging.outputs.test-summary }}"

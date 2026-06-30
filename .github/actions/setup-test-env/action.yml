@@ -1,26 +1,23 @@
 name: "Setup Test Environment"
-description: >
-  Installs Node.js with cache, runs the install command, optionally writes a
-  .env.test file, and posts a step summary. Use this to DRY up the 4-6 setup
-  steps that every test job in the repo repeats.
+description: "Node.js setup + install + optional .env.test + step summary"
 
 inputs:
   node-version:
-    description: "Node.js version to use"
+    description: "Node.js version"
     default: "20"
   working-directory:
-    description: "Directory to run install command in"
+    description: "Directory to run install in"
     default: "."
   install-command:
-    description: "Command to install dependencies"
+    description: "Install command"
     default: "npm install"
   env-vars:
-    description: "Optional .env.test content (pass as a secret)"
+    description: ".env.test content (pass as secret)"
     required: false
 
 outputs:
   cache-hit:
-    description: "Whether the npm cache was restored (true/false)"
+    description: "Whether npm cache was restored"
     value: ${{ steps.setup-node.outputs.cache-hit }}
   node-version-used:
     description: "Resolved Node.js version"
@@ -41,20 +38,16 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: ${{ inputs.install-command }}
 
-    # Only runs if env-vars input was provided
     - name: Write .env.test
       if: ${{ inputs.env-vars != '' }}
       shell: bash
-      run: printf '%s' "$ENV_CONTENT" > .env.test
       env:
         ENV_CONTENT: ${{ inputs.env-vars }}
+      run: printf '%s' "$ENV_CONTENT" > .env.test
 
-    - name: Post step summary
+    - name: Step summary
       shell: bash
       run: |
-        echo "## ⚙️ Setup Complete" >> $GITHUB_STEP_SUMMARY
-        echo "| | |" >> $GITHUB_STEP_SUMMARY
-        echo "|-|-|" >> $GITHUB_STEP_SUMMARY
-        echo "| Node.js | \`${{ steps.setup-node.outputs.node-version }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| Cache hit | \`${{ steps.setup-node.outputs.cache-hit }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| Install command | \`${{ inputs.install-command }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Node | Cache hit |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|-----------|" >> $GITHUB_STEP_SUMMARY
+        echo "| \`${{ steps.setup-node.outputs.node-version }}\` | \`${{ steps.setup-node.outputs.cache-hit }}\` |" >> $GITHUB_STEP_SUMMARY

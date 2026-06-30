@@ -1,11 +1,5 @@
 name: "01 · Matrix Strategy"
 
-# Key concepts:
-#   matrix       — generate N jobs from a combination of values
-#   fail-fast    — whether one failure cancels the rest
-#   exclude      — drop specific matrix combinations
-#   max-parallel — cap concurrent runners (cost control)
-
 on:
   push:
     branches: [main]
@@ -17,21 +11,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
-      # fail-fast: false is the most important QA-specific setting here.
-      # The default is true — meaning a single failing browser cancels all other
-      # matrix cells mid-run. For test suites, you almost always want all results.
-      fail-fast: false
-      max-parallel: 4   # cap cost: at most 4 runners at once
-
+      fail-fast: false  # don't cancel other browsers when one fails
+      max-parallel: 4
       matrix:
         os: [ubuntu-latest, windows-latest]
         browser: [chromium, firefox, webkit]
         exclude:
-          # webkit is not supported on Windows — drop those 2 cells
           - os: windows-latest
             browser: webkit
-
-      # Result: 4 jobs (2×3 minus 2 excluded) run in parallel
 
     steps:
       - uses: actions/checkout@v4
@@ -46,15 +33,13 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Run E2E tests — ${{ matrix.browser }}
+      - name: Run E2E tests
         run: npm run test:e2e
         env:
           BROWSER: ${{ matrix.browser }}
           CI: "true"
 
-      # Upload each browser's report as a separate artifact.
-      # if: always() ensures upload even when some browsers fail.
-      - name: Upload Playwright report
+      - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:

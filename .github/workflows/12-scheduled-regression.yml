@@ -1,77 +1,49 @@
 name: "12 · Scheduled Nightly Regression"
 
-# Key concepts:
-#   schedule         — cron-based trigger (always UTC — no timezone support)
-#   github.event_name — lets you write conditional logic that only applies
-#                       to scheduled runs vs manual triggers
-#
-# Use case: run the full regression suite every night.
-# Post a Slack notification only on scheduled runs — not on manual re-runs
-# where the person already knows the result.
-
 on:
   schedule:
-    # Every weekday at 02:00 UTC
-    # ┌── minute (0)
-    # │  ┌── hour (2 = 02:00 UTC)
-    # │  │  ┌── day of month (* = every day)
-    # │  │  │  ┌── month (* = every month)
-    # │  │  │  │  ┌── day of week (1-5 = Mon–Fri)
-    - cron: "0 2 * * 1-5"
-
-  # Also allow manual triggers so you can test the workflow itself
-  # without waiting for the cron window
+    - cron: "0 2 * * 1-5"  # 02:00 UTC, Mon–Fri (GitHub Actions cron is always UTC)
   workflow_dispatch:
 
 jobs:
   regression:
-    name: "Nightly regression — ${{ github.ref_name }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-
       - run: npm install
-
-      - name: Install all Playwright browsers
-        run: npx playwright install --with-deps
+      - run: npx playwright install --with-deps
 
       - name: Run full regression suite
         id: tests
         run: npm run test:e2e
-        continue-on-error: true   # capture outcome; fail the job later after uploading
+        continue-on-error: true
         env:
           CI: "true"
 
-      - name: Upload regression report
+      - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nightly-regression-${{ github.run_id }}
           path: playwright-report/
-          # Keep nightly reports longer than feature-branch ones
           retention-days: 30
 
-      # Only notify on scheduled runs.
-      # On workflow_dispatch the person who clicked the button already knows.
-      - name: Post result to webhook
+      # Only notify on scheduled runs — on manual dispatch the user already knows
+      - name: Post to Slack
         if: github.event_name == 'schedule'
         env:
           OUTCOME: ${{ steps.tests.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          echo "Scheduled run finished: $OUTCOME"
-          echo "Report: $RUN_URL"
-          # Real usage — pass SLACK_WEBHOOK_URL as a repo secret:
+          echo "Nightly: $OUTCOME — $RUN_URL"
           # curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
           #   -H 'Content-Type: application/json' \
           #   -d "{\"text\": \"Nightly regression *${OUTCOME}* → ${RUN_URL}\"}"
 
-      # Fail the job now, after the report has been uploaded
       - name: Fail if tests failed
         if: steps.tests.outcome == 'failure'
         run: exit 1

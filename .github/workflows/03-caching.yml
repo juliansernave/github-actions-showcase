@@ -1,86 +1,45 @@
 name: "03 · Caching"
 
-# Key concepts:
-#   actions/cache        — manually cache any directory with full key control
-#   cache: 'npm'         — built-in shortcut in actions/setup-node
-#   hashFiles()          — generates a cache key from file content
-#   restore-keys         — ordered fallback list if the exact key misses
-#   cache-hit output     — tells you whether the cache was restored or not
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 jobs:
-  # Approach A: the built-in shortcut.
-  # actions/setup-node handles everything — it hashes package-lock.json
-  # (or package.json if no lockfile exists) and caches ~/.npm.
-  # Simpler, but less control over what gets cached.
-  node-builtin-cache:
-    name: "Node.js — built-in cache"
+  # Built-in shortcut: setup-node handles key generation and cache restore automatically
+  builtin-cache:
+    name: "Built-in cache"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"   # <-- that's all you need
-
+          cache: "npm"
       - run: npm install
       - run: npm test
 
-  # Approach B: manual cache with actions/cache.
-  # Use this when you need to cache something beyond npm (Maven, Gradle,
-  # a compiled binary, a downloaded test dataset, etc.)
-  node-manual-cache:
-    name: "Node.js — manual cache"
+  # Manual cache: full control over path, key, and fallback strategy
+  manual-cache:
+    name: "Manual cache"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          # No cache: here — we manage it ourselves below
 
       - name: Cache node_modules
         id: node-cache
         uses: actions/cache@v4
         with:
           path: node_modules
-          # Key = OS + lockfile hash. Busts automatically when dependencies change.
           key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          # Restore keys: ordered fallbacks. GHA picks the most recent match.
-          # Useful when the lockfile changed slightly — better a warm partial
-          # cache than starting from scratch.
           restore-keys: |
             ${{ runner.os }}-node-
 
-      - name: Install (only runs on cache miss)
+      - name: Install (skipped on cache hit)
         if: steps.node-cache.outputs.cache-hit != 'true'
         run: npm install
 
-      - name: Cache status
-        run: echo "Cache hit = ${{ steps.node-cache.outputs.cache-hit }}"
-
       - run: npm test
-
-  # Approach C: Python pip caching (shows the same concept in another ecosystem)
-  python-cache:
-    name: "Python — built-in pip cache"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"   # hashes requirements*.txt automatically
-
-      - name: Create a minimal requirements file
-        run: echo "pytest==7.4.0" > requirements.txt
-
-      - run: pip install -r requirements.txt
-      - run: python -m pytest --version

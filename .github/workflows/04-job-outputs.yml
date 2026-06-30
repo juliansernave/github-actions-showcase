@@ -1,13 +1,5 @@
 name: "04 · Job Outputs"
 
-# Key concepts:
-#   $GITHUB_OUTPUT       — the modern way to set step outputs (env-file API)
-#   jobs.<id>.outputs    — declare which step outputs to expose at the job level
-#   needs.<id>.outputs   — read another job's outputs in a downstream job
-#
-# The old ::set-output:: command was deprecated in 2022 and still shows up
-# in tutorials. This workflow uses the correct current approach.
-
 on:
   push:
     branches: [main]
@@ -16,73 +8,33 @@ on:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
-
-    # Step outputs don't automatically flow to other jobs.
-    # You must declare them here, mapping step output names to job output names.
     outputs:
       tests-passed: ${{ steps.results.outputs.tests_passed }}
       tests-failed: ${{ steps.results.outputs.tests_failed }}
-      flaky-count:  ${{ steps.results.outputs.flaky_count }}
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-
       - run: npm install
 
-      - name: Run tests and capture results
+      - name: Run tests and write outputs
         id: results
         run: |
-          # Run jest with JSON output; don't fail the step on test failure
           npm test -- --json --outputFile=jest-output.json 2>/dev/null || true
-
-          # Parse the results
-          PASSED=$(node -e "
-            try {
-              const r = require('./jest-output.json');
-              process.stdout.write(String(r.numPassedTests || 0));
-            } catch { process.stdout.write('0'); }
-          ")
-          FAILED=$(node -e "
-            try {
-              const r = require('./jest-output.json');
-              process.stdout.write(String(r.numFailedTests || 0));
-            } catch { process.stdout.write('0'); }
-          ")
-
-          # Write outputs using the modern $GITHUB_OUTPUT env-file API.
-          # Each line is key=value; multi-line values use a heredoc delimiter.
+          PASSED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numPassedTests||0)) } catch { process.stdout.write('0') }")
+          FAILED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numFailedTests||0)) } catch { process.stdout.write('0') }")
           echo "tests_passed=${PASSED}" >> "$GITHUB_OUTPUT"
           echo "tests_failed=${FAILED}" >> "$GITHUB_OUTPUT"
-          echo "flaky_count=0"          >> "$GITHUB_OUTPUT"
 
-          echo "Passed: ${PASSED} | Failed: ${FAILED}"
-
-  # This job receives structured data from run-tests — no shared files, no artifacts
   post-summary:
     runs-on: ubuntu-latest
     needs: run-tests
     steps:
-      - name: Write step summary
-        run: |
-          echo "## Test Run Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Status | Count |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ✅ Passed | ${{ needs.run-tests.outputs.tests-passed }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ❌ Failed | ${{ needs.run-tests.outputs.tests-failed }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ⚠️ Flaky  | ${{ needs.run-tests.outputs.flaky-count }}  |" >> "$GITHUB_STEP_SUMMARY"
-
-  # Conditional job: only spins up a runner if there were flaky tests
-  notify-flaky:
-    runs-on: ubuntu-latest
-    needs: run-tests
-    if: ${{ needs.run-tests.outputs.flaky-count > 0 }}
-    steps:
-      - name: Alert on flaky tests
-        run: |
-          echo "🚨 ${{ needs.run-tests.outputs.flaky-count }} flaky test(s) detected"
-          echo "Notify team / file ticket here"
+      - run: |
+          echo "## Test Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ✅ Passed | ❌ Failed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ${{ needs.run-tests.outputs.tests-passed }} | ${{ needs.run-tests.outputs.tests-failed }} |" >> "$GITHUB_STEP_SUMMARY"
