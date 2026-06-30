@@ -2,8 +2,8 @@ name: "12 · Scheduled Nightly Regression"
 
 on:
   schedule:
-    - cron: "0 2 * * 1-5"  # 02:00 UTC, Mon–Fri (GitHub Actions cron is always UTC)
-  workflow_dispatch:
+    - cron: "0 2 * * 1-5"  # 02:00 UTC Mon–Fri — GitHub Actions cron is always UTC, no timezone support
+  workflow_dispatch:  # also allows manual trigger so you can test this workflow without waiting for the cron
 
 jobs:
   regression:
@@ -15,29 +15,28 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm install
-      - run: npx playwright install --with-deps
+      - run: npx playwright install --with-deps  # install all browsers for the full regression suite — no matrix here
 
       - name: Run full regression suite
-        id: tests
+        id: tests  # id needed to read this step's outcome in later steps
         run: npm run test:e2e
-        continue-on-error: true
+        continue-on-error: true  # don't fail the job here — we want to upload the report before deciding the final status
         env:
           CI: "true"
 
       - name: Upload report
-        if: always()
+        if: always()  # always upload — even if the suite failed
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-regression-${{ github.run_id }}
+          name: nightly-regression-${{ github.run_id }}  # unique name per run
           path: playwright-report/
-          retention-days: 30
+          retention-days: 30  # keep nightly reports longer than regular ones
 
-      # Only notify on scheduled runs — on manual dispatch the user already knows
       - name: Post to Slack
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule'  # skip this step when triggered manually — the person who clicked run already knows the result
         env:
-          OUTCOME: ${{ steps.tests.outcome }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUTCOME: ${{ steps.tests.outcome }}  # 'success' or 'failure' from the test step above
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}  # direct link to this run
         run: |
           echo "Nightly: $OUTCOME — $RUN_URL"
           # curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
@@ -45,5 +44,5 @@ jobs:
           #   -d "{\"text\": \"Nightly regression *${OUTCOME}* → ${RUN_URL}\"}"
 
       - name: Fail if tests failed
-        if: steps.tests.outcome == 'failure'
-        run: exit 1
+        if: steps.tests.outcome == 'failure'  # now that the report is safely uploaded, we can fail the job
+        run: exit 1  # exit 1 marks the step (and job) as failed

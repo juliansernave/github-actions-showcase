@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Built-in shortcut: setup-node handles key generation and cache restore automatically
+  # Approach A: the built-in shortcut — setup-node handles everything automatically
   builtin-cache:
     name: "Built-in cache"
     runs-on: ubuntu-latest
@@ -15,11 +15,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-      - run: npm install
+          cache: "npm"  # tells setup-node to cache ~/.npm automatically — hashes package-lock.json to build the key
+      - run: npm install  # on cache hit this is much faster since packages are already cached
       - run: npm test
 
-  # Manual cache: full control over path, key, and fallback strategy
+  # Approach B: manual cache — full control over what gets cached, the key, and the fallback
   manual-cache:
     name: "Manual cache"
     runs-on: ubuntu-latest
@@ -28,18 +28,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          # no cache: here — we handle it manually below
 
       - name: Cache node_modules
-        id: node-cache
+        id: node-cache  # give this step an id so we can read its outputs below
         uses: actions/cache@v4
         with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          path: node_modules  # what folder to cache and restore
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}  # cache key — changes whenever package-lock.json changes, busting the cache
           restore-keys: |
-            ${{ runner.os }}-node-
+            ${{ runner.os }}-node-  # fallback key — used if exact key misses, picks the most recent partial match
 
       - name: Install (skipped on cache hit)
-        if: steps.node-cache.outputs.cache-hit != 'true'
+        if: steps.node-cache.outputs.cache-hit != 'true'  # only run npm install if nothing was restored from cache
         run: npm install
 
       - run: npm test

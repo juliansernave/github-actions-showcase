@@ -1,40 +1,40 @@
 name: "05 · Reusable Workflow (Definition)"
 
 on:
-  workflow_call:
-    inputs:
+  workflow_call:  # this trigger means the workflow can only be called by another workflow, never triggered directly
+    inputs:  # parameters the caller must/can pass in
       environment:
-        type: string
-        required: true
+        type: string  # inputs must declare their type: string, boolean, or number
+        required: true  # caller must provide this — no default
       test-suite:
         type: string
-        default: "smoke"
+        default: "smoke"  # optional — falls back to "smoke" if the caller doesn't provide it
       node-version:
         type: string
         default: "20"
-    outputs:
+    outputs:  # what this workflow sends back to the caller
       test-summary:
-        value: ${{ jobs.test.outputs.summary }}
+        value: ${{ jobs.test.outputs.summary }}  # wired to the job-level output below
 
 jobs:
   test:
-    name: "[${{ inputs.environment }}] ${{ inputs.test-suite }}"
+    name: "[${{ inputs.environment }}] ${{ inputs.test-suite }}"  # dynamic name using the inputs passed by the caller
     runs-on: ubuntu-latest
     outputs:
-      summary: ${{ steps.run.outputs.summary }}
+      summary: ${{ steps.run.outputs.summary }}  # expose step output at job level so the workflow output above can reach it
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version }}  # use whatever version the caller passed in
           cache: "npm"
       - run: npm install
 
       - name: Run suite
-        id: run
+        id: run  # id needed so the outputs block above can reference this step
         run: |
           npm run test:api
-          echo "summary=${{ inputs.test-suite }} PASSED on ${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          echo "summary=${{ inputs.test-suite }} PASSED on ${{ inputs.environment }}" >> "$GITHUB_OUTPUT"  # write the output the caller will read
         env:
-          TARGET_ENV: ${{ inputs.environment }}
+          TARGET_ENV: ${{ inputs.environment }}  # make the environment value available to the test process as an env var

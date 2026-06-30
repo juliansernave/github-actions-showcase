@@ -8,8 +8,8 @@ on:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
-    outputs:
-      tests-passed: ${{ steps.results.outputs.tests_passed }}
+    outputs:  # declare what this job exposes to other jobs — step outputs don't flow automatically, you have to map them here
+      tests-passed: ${{ steps.results.outputs.tests_passed }}  # maps the step output (tests_passed) to a job-level output (tests-passed)
       tests-failed: ${{ steps.results.outputs.tests_failed }}
 
     steps:
@@ -21,20 +21,20 @@ jobs:
       - run: npm install
 
       - name: Run tests and write outputs
-        id: results
+        id: results  # id needed so the outputs block above can reference this step
         run: |
-          npm test -- --json --outputFile=jest-output.json 2>/dev/null || true
-          PASSED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numPassedTests||0)) } catch { process.stdout.write('0') }")
-          FAILED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numFailedTests||0)) } catch { process.stdout.write('0') }")
-          echo "tests_passed=${PASSED}" >> "$GITHUB_OUTPUT"
+          npm test -- --json --outputFile=jest-output.json 2>/dev/null || true  # run jest with json output, || true so the script doesn't stop if tests fail
+          PASSED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numPassedTests||0)) } catch { process.stdout.write('0') }")  # parse passed count from the json file
+          FAILED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numFailedTests||0)) } catch { process.stdout.write('0') }")  # parse failed count
+          echo "tests_passed=${PASSED}" >> "$GITHUB_OUTPUT"  # write to $GITHUB_OUTPUT — this is how you set a step output (key=value format)
           echo "tests_failed=${FAILED}" >> "$GITHUB_OUTPUT"
 
   post-summary:
     runs-on: ubuntu-latest
-    needs: run-tests
+    needs: run-tests  # only runs after run-tests completes
     steps:
       - run: |
           echo "## Test Run" >> "$GITHUB_STEP_SUMMARY"
           echo "| ✅ Passed | ❌ Failed |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-----------|----------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ${{ needs.run-tests.outputs.tests-passed }} | ${{ needs.run-tests.outputs.tests-failed }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ${{ needs.run-tests.outputs.tests-passed }} | ${{ needs.run-tests.outputs.tests-failed }} |" >> "$GITHUB_STEP_SUMMARY"  # read job outputs using needs.<job-id>.outputs.<name>

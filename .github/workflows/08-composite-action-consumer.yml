@@ -12,19 +12,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup test environment
-        id: setup
-        uses: ./.github/actions/setup-test-env
-        with:
+        id: setup  # id needed to read this action's outputs in the next step
+        uses: ./.github/actions/setup-test-env  # call our local composite action — ./ means look in this repo
+        with:  # pass inputs defined in the action's action.yml
           node-version: "20"
 
-      - run: echo "Cache hit ${{ steps.setup.outputs.cache-hit }} — Node ${{ steps.setup.outputs.node-version-used }}"
+      - run: echo "Cache hit ${{ steps.setup.outputs.cache-hit }} — Node ${{ steps.setup.outputs.node-version-used }}"  # read the outputs the composite action returned using steps.<id>.outputs.<name>
       - run: npm test
 
   test-node18:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-test-env
+      - uses: ./.github/actions/setup-test-env  # same action, different input — the abstraction works for any Node version
         with:
           node-version: "18"
       - run: npm test

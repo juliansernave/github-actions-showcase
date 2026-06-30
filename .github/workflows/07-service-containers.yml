@@ -9,27 +9,27 @@ jobs:
   integration-tests:
     runs-on: ubuntu-latest
 
-    services:
+    services:  # docker containers that start alongside the job — accessible via localhost on the runner
       postgres:
-        image: postgres:15
-        env:
+        image: postgres:15  # the docker image to pull and run
+        env:  # env vars passed into the container — these are postgres-specific config vars
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpassword
           POSTGRES_DB: testdb
         ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          - 5432:5432  # map container port to runner port — tests connect via localhost:5432
+        options: >-  # extra docker run flags
+          --health-cmd pg_isready  # command to check if postgres is ready to accept connections
+          --health-interval 10s  # run the health check every 10 seconds
+          --health-timeout 5s  # fail the health check if it takes more than 5s
+          --health-retries 5  # retry 5 times — GHA blocks step execution until the container is healthy
 
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine  # lightweight redis image
         ports:
-          - 6379:6379
+          - 6379:6379  # accessible via localhost:6379
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "redis-cli ping"  # redis-cli ping returns PONG when the server is ready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -45,5 +45,5 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
         env:
-          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb  # services are reachable via localhost on the mapped port
           REDIS_URL: redis://localhost:6379
