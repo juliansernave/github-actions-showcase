@@ -10,6 +10,9 @@ name: "02 · Integration Tests"
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
 
 jobs:

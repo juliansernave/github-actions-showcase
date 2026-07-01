@@ -10,8 +10,14 @@ name: "01 · Pull Request"
 on:
   push:
     branches: [main]  # triggers on direct pushes to main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
     branches: [main]  # also triggers when a PR targets main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:  # allows manual trigger from the Actions tab
 
 jobs:
