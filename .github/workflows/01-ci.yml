@@ -69,7 +69,7 @@ jobs:
         with:
           name: unit-test-results
           path: test-results/
-          retention-days: 2   # ← ARTIFACT: kept for 14 days, then auto-deleted
+          retention-days: 2   # ← ARTIFACT: kept for 2 days, then auto-deleted
 
   # ─── Job 2: E2E across all browsers ─────────────────────────────────────────
   e2e-tests:
@@ -81,7 +81,7 @@ jobs:
     if: needs.unit-tests.result == 'success'
 
     strategy:
-      fail-fast: true         # ← MATRIX: keep running other browsers even if one fails
+      fail-fast: true         # ← MATRIX: if one browser fails, cancel the others — no point wasting time on them
       matrix:
         browser: [chromium, firefox, webkit]   # GHA creates one job per entry, all in parallel
 
@@ -116,7 +116,7 @@ jobs:
   summary:
     name: "Write summary"
     runs-on: ubuntu-latest
-    needs: [unit-tests, e2e-tests]
+    needs: [unit-tests, e2e-tests] #wait for both jobs to finish before writing the summary
     if: always()               # always write the summary — even if e2e was skipped or failed
 
     steps:
