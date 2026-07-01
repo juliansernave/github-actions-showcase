@@ -1,23 +1,21 @@
+##
+## Composite action — shared Node.js setup used by 02-features.yml.
+##
+## A composite action packages repeated steps so you don't copy-paste
+## checkout / setup-node / npm install into every workflow.
+##
+
 name: "Setup Test Environment"
-description: "Node.js setup + install + optional .env.test + step summary"
+description: "Node.js setup + npm install + step summary"
 
 inputs:
   node-version:
-    description: "Node.js version"
+    description: "Node.js version to use"
     default: "20"
-  working-directory:
-    description: "Directory to run install in"
-    default: "."
-  install-command:
-    description: "Install command"
-    default: "npm install"
-  env-vars:
-    description: ".env.test content (pass as secret)"
-    required: false
 
 outputs:
   cache-hit:
-    description: "Whether npm cache was restored"
+    description: "Whether the npm cache was restored"
     value: ${{ steps.setup-node.outputs.cache-hit }}
   node-version-used:
     description: "Resolved Node.js version"
@@ -31,23 +29,15 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: "npm"
+        cache: "npm"   # cache keyed on package-lock.json — same caching benefit as in a regular workflow
 
     - name: Install dependencies
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: ${{ inputs.install-command }}
-
-    - name: Write .env.test
-      if: ${{ inputs.env-vars != '' }}
-      shell: bash
-      env:
-        ENV_CONTENT: ${{ inputs.env-vars }}
-      run: printf '%s' "$ENV_CONTENT" > .env.test
+      run: npm install
 
     - name: Step summary
       shell: bash
       run: |
-        echo "| Node | Cache hit |" >> $GITHUB_STEP_SUMMARY
-        echo "|------|-----------|" >> $GITHUB_STEP_SUMMARY
-        echo "| \`${{ steps.setup-node.outputs.node-version }}\` | \`${{ steps.setup-node.outputs.cache-hit }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Node | Cache hit |" >> "$GITHUB_STEP_SUMMARY"
+        echo "|------|-----------|" >> "$GITHUB_STEP_SUMMARY"
+        echo "| \`${{ steps.setup-node.outputs.node-version }}\` | \`${{ steps.setup-node.outputs.cache-hit }}\` |" >> "$GITHUB_STEP_SUMMARY"

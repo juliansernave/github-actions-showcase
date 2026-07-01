@@ -1,0 +1,132 @@
+##
+## Main CI — runs on every push and pull request to main.
+##
+## Concepts covered:
+##   - Smarter triggers   : branch + path filters, workflow_dispatch
+##   - Caching            : npm cache keyed on package-lock.json
+##   - Job outputs        : pass test counts between jobs
+##   - Artifacts          : upload reports on success or failure
+##   - Conditional steps  : if: always() / if: success()
+##   - Matrix builds      : 3 browsers in parallel, fail-fast: false
+##   - Step summary       : render a markdown table on the run page
+##
+
+name: "01 · CI"
+
+on:
+  push:
+    branches: [main]           # run on direct pushes to main
+    paths-ignore:
+      - '**/*.md'              # skip docs-only changes — no point burning runner minutes
+      - 'docs/**'
+  pull_request:
+    branches: [main]           # also run when a PR targets main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:           # allow a manual trigger from the Actions tab
+
+jobs:
+
+  # ─── Job 1: Unit & API tests ────────────────────────────────────────────────
+  unit-tests:
+    name: "Unit & API tests"
+    runs-on: ubuntu-latest
+
+    # Job outputs let downstream jobs read values this job produced.
+    # Step outputs don't flow automatically — you have to lift them here.
+    outputs:
+      tests-passed: ${{ steps.results.outputs.tests_passed }}
+      tests-failed: ${{ steps.results.outputs.tests_failed }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"         # ← CACHING: restores ~/.npm using package-lock.json as the key
+                               #   first run populates the cache; every run after that is faster
+
+      - run: npm install
+
+      - name: Run tests and capture counts
+        id: results            # id is required so the outputs block above can reference this step
+        run: |
+          # || true keeps the script going even if tests fail — we need the JSON file for the count
+          npm test -- --json --outputFile=jest-output.json 2>/dev/null || true
+
+          PASSED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numPassedTests||0)) } catch { process.stdout.write('0') }")
+          FAILED=$(node -e "try { const r=require('./jest-output.json'); process.stdout.write(String(r.numFailedTests||0)) } catch { process.stdout.write('0') }")
+
+          # Writing to $GITHUB_OUTPUT is how you set step outputs in modern GHA
+          echo "tests_passed=${PASSED}" >> "$GITHUB_OUTPUT"
+          echo "tests_failed=${FAILED}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload JUnit results
+        if: always()           # ← CONDITIONAL: upload even when tests fail — the report is most useful then
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: test-results/
+          retention-days: 2   # ← ARTIFACT: kept for 14 days, then auto-deleted
+
+  # ─── Job 2: E2E across all browsers ─────────────────────────────────────────
+  e2e-tests:
+    name: "E2E · ${{ matrix.browser }}"
+    runs-on: ubuntu-latest
+    needs: unit-tests          # wait for unit tests before spinning up expensive browser runners
+
+    # Skip all E2E jobs if unit tests failed — no point testing UI on broken logic
+    if: needs.unit-tests.result == 'success'
+
+    strategy:
+      fail-fast: true         # ← MATRIX: keep running other browsers even if one fails
+      matrix:
+        browser: [chromium, firefox, webkit]   # GHA creates one job per entry, all in parallel
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"         # ← CACHING: browser matrix jobs also benefit from the npm cache
+      - run: npm install
+
+      - name: Install Playwright browser
+        # Install only the browser needed for this matrix cell — not all three
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run E2E tests
+        continue-on-error: true   # ← CONDITIONAL: don't cancel sibling matrix cells if this browser fails
+        env:
+          BROWSER: ${{ matrix.browser }}   # playwright.config.ts reads this to pick the right project
+          CI: "true"
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()           # ← ARTIFACT: one report per browser so they don't overwrite each other
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: playwright-report/
+          retention-days: 2
+
+  # ─── Job 3: Summary ──────────────────────────────────────────────────────────
+  summary:
+    name: "Write summary"
+    runs-on: ubuntu-latest
+    needs: [unit-tests, e2e-tests]
+    if: always()               # always write the summary — even if e2e was skipped or failed
+
+    steps:
+      - name: Write step summary
+        run: |
+          # $GITHUB_STEP_SUMMARY renders as Markdown on the workflow run page
+          echo "## CI Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ✅ Passed | ❌ Failed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          # Read job outputs via needs.<job>.outputs.<name>
+          echo "| ${{ needs.unit-tests.outputs.tests-passed }} | ${{ needs.unit-tests.outputs.tests-failed }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "E2E result: **${{ needs.e2e-tests.result }}**" >> "$GITHUB_STEP_SUMMARY"

@@ -1,16 +1,6 @@
-# GitHub Actions — Intermediate Showcase
+# GitHub Actions — Course Showcase
 
-Real, runnable workflows for QA and test automation. Each workflow represents a realistic scenario and combines multiple concepts naturally — caching, artifacts, outputs, and conditionals appear where they're actually useful, not in isolation.
-
----
-
-## Getting started
-
-```bash
-npm install
-git add package-lock.json
-git push
-```
+Lightweight, runnable repo summarizing key concepts from a GitHub Actions course. Two focused workflows cover the full topic list; each file is heavily commented to explain the *why* behind each feature.
 
 ---
 
@@ -18,24 +8,42 @@ git push
 
 | # | Workflow | Scenario | Concepts |
 |---|----------|----------|---------|
-| 01 | [Pull Request](/.github/workflows/01-pull-request.yml) | Main CI — runs on every push/PR | Matrix, caching, artifacts, job outputs, conditionals |
-| 02 | [Integration Tests](/.github/workflows/02-integration.yml) | Tests against real Postgres + Redis | Service containers, health checks, artifacts |
-| 03 | [Reusable Test Runner](/.github/workflows/03-reusable-test-runner.yml) | Parameterized runner called by other workflows | `workflow_call`, inputs, outputs, composite action |
-| 04 | [Deploy Pipeline](/.github/workflows/04-deploy-pipeline.yml) | Smoke → staging → regression → production | Reusable workflow, environments, approval gate |
-| 05 | [Manual Test Run](/.github/workflows/05-manual-run.yml) | On-demand run from the GitHub UI | `workflow_dispatch` inputs, composite action, conditionals |
-| 06 | [Nightly Regression](/.github/workflows/06-nightly-regression.yml) | Full suite every weekday at 02:00 UTC | Schedule, matrix, composite action, Slack guard |
-| 07 | [Security](/.github/workflows/07-security.yml) | Security patterns reference | Least privilege, script injection, OIDC |
+| 01 | [CI](/.github/workflows/01-ci.yml) | Runs on every push / PR | Triggers, caching, matrix, artifacts, conditionals, job outputs |
+| 02 | [Features Demo](/.github/workflows/02-features.yml) | Integration tests + security patterns | Service containers, composite action, env vars, secrets, named environments, security |
+
+---
+
+## Concept coverage
+
+| Doc topic | Where to find it |
+|-----------|-----------------|
+| **Smarter triggers** — branch/path filters, `workflow_dispatch` | `01-ci.yml` → `on:` block |
+| **Caching** — npm deps keyed on lockfile | `01-ci.yml` → `cache: "npm"` in both jobs |
+| **Artifacts & outputs** — upload reports, pass values between jobs | `01-ci.yml` → `upload-artifact`, `outputs:`, `$GITHUB_OUTPUT` |
+| **Conditional execution** — `if: always()`, `if: failure()`, `continue-on-error` | `01-ci.yml` → artifact upload steps + e2e job guard |
+| **Matrix builds** — 3 browsers in parallel, `fail-fast: false` | `01-ci.yml` → `e2e-tests` job strategy |
+| **Step summary** — markdown table on the run page | `01-ci.yml` → `summary` job (`$GITHUB_STEP_SUMMARY`) |
+| **Custom / composite action** — shared setup packaged once | `02-features.yml` → `uses: ./.github/actions/setup-test-env` |
+| **Service containers** — real Postgres, no mocks | `02-features.yml` → `services:` block in `integration` job |
+| **Env vars & secrets** — step-level env, named environment, encrypted secret | `02-features.yml` → `env:` steps + `environment: staging` |
+| **Security** — least-privilege, script-injection-safe pattern, OIDC reference | `02-features.yml` → `security` job |
 
 ---
 
 ## Shared composite action
 
-`.github/actions/setup-test-env` — handles Node.js setup, npm install, and step summary in one step. Used by workflows 03, 05, and 06.
+`.github/actions/setup-test-env` — handles Node.js setup, npm install, and step summary in one reusable step. Called by workflow 02.
 
 ---
 
-## Notes
+## Getting started
 
-**Workflow 04** — create `staging` and `production` environments in **Settings → Environments** before pushing. Add yourself as a required reviewer on `production` to see the approval gate.
+```bash
+npm install
+npm test          # unit + API tests
+npm run test:e2e  # Playwright E2E (auto-starts the Express server)
+```
 
-**Workflow 06** — add a `SLACK_WEBHOOK_URL` secret and uncomment the `curl` block to enable Slack notifications.
+Push to GitHub to see the workflows run live.
+
+**Workflow 02 security job** — create a `staging` environment in **Settings → Environments** and add `EXAMPLE_TOKEN` as an environment secret to see the masked-secret step fully populated.
