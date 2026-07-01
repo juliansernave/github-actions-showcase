@@ -11,6 +11,56 @@ Lightweight, runnable repo summarizing key concepts from a GitHub Actions course
 | 01 | [CI](/.github/workflows/01-ci.yml) | Runs on every push / PR | Triggers, caching, matrix, artifacts, conditionals, job outputs |
 | 02 | [Features Demo](/.github/workflows/02-features.yml) | Integration tests + security patterns | Service containers, composite action, env vars, secrets, named environments, security |
 
+### 01-ci.yml — how it's wired
+
+Three jobs chained by `needs`. Unit tests gate the E2E matrix; the summary always runs last and reads the unit-test job outputs.
+
+```mermaid
+flowchart TD
+    TRIG(["push → main · pull_request → main · workflow_dispatch<br/><i>paths-ignore: **/*.md, docs/**</i>"])
+
+    subgraph UT["unit-tests"]
+        direction TB
+        U1["checkout"] --> U2["setup-node 20<br/>cache: npm"] --> U3["npm install"] --> U4["run tests → capture counts<br/>sets outputs: tests-passed / tests-failed"] --> U5["upload unit-test-results<br/><i>if: always()</i>"]
+    end
+
+    subgraph E2E["e2e-tests — <i>needs: unit-tests · if: success</i>"]
+        direction TB
+        M["matrix: chromium · firefox · webkit<br/>fail-fast: true"] --> E1["install Playwright browser"] --> E2["run E2E<br/><i>continue-on-error: true</i>"] --> E3["upload playwright-report-&lt;browser&gt;<br/><i>if: always()</i>"]
+    end
+
+    subgraph SUM["summary — <i>needs: both · if: always()</i>"]
+        S1["write markdown table to<br/>$GITHUB_STEP_SUMMARY"]
+    end
+
+    TRIG --> UT
+    UT -->|"on success"| E2E
+    UT -.->|"outputs"| SUM
+    E2E --> SUM
+```
+
+### 02-features.yml — how it's wired
+
+Two independent jobs (no `needs` between them, so they run in parallel). Workflow-level `permissions: contents: read` applies least privilege by default.
+
+```mermaid
+flowchart TD
+    TRIG(["push → main · workflow_dispatch<br/><i>paths-ignore: **/*.md, docs/**</i>"])
+
+    subgraph INT["integration"]
+        direction TB
+        I0["service container: postgres:15<br/>health-check gated · localhost:5432"] --> I1["checkout"] --> I2["uses: ./.github/actions/setup-test-env<br/><i>composite action</i>"] --> I3["run integration tests<br/>env: DATABASE_URL · continue-on-error"] --> I4["upload integration-test-results<br/><i>if: always()</i>"] --> I5["fail if tests failed<br/><i>if: outcome == failure</i>"]
+    end
+
+    subgraph SEC["security — <i>environment: staging</i>"]
+        direction TB
+        C1["script-injection-safe pattern<br/>route untrusted input via env:"] --> C2["use environment secret<br/>EXAMPLE_TOKEN (masked)"] --> C3["OIDC keyless auth<br/><i>reference — commented out</i>"]
+    end
+
+    TRIG --> INT
+    TRIG --> SEC
+```
+
 ---
 
 ## Concept coverage
@@ -21,7 +71,7 @@ Lightweight, runnable repo summarizing key concepts from a GitHub Actions course
 | **Caching** — npm deps keyed on lockfile | `01-ci.yml` → `cache: "npm"` in both jobs |
 | **Artifacts & outputs** — upload reports, pass values between jobs | `01-ci.yml` → `upload-artifact`, `outputs:`, `$GITHUB_OUTPUT` |
 | **Conditional execution** — `if: always()`, `if: failure()`, `continue-on-error` | `01-ci.yml` → artifact upload steps + e2e job guard |
-| **Matrix builds** — 3 browsers in parallel, `fail-fast: false` | `01-ci.yml` → `e2e-tests` job strategy |
+| **Matrix builds** — 3 browsers in parallel, `fail-fast: true` | `01-ci.yml` → `e2e-tests` job strategy |
 | **Step summary** — markdown table on the run page | `01-ci.yml` → `summary` job (`$GITHUB_STEP_SUMMARY`) |
 | **Custom / composite action** — shared setup packaged once | `02-features.yml` → `uses: ./.github/actions/setup-test-env` |
 | **Service containers** — real Postgres, no mocks | `02-features.yml` → `services:` block in `integration` job |
@@ -72,7 +122,3 @@ npm install
 npm test          # unit + API tests
 npm run test:e2e  # Playwright E2E (auto-starts the Express server)
 ```
-
-Push to GitHub to see the workflows run live.
-
-**Workflow 02 security job** — create a `staging` environment in **Settings → Environments** and add `EXAMPLE_TOKEN` as an environment secret to see the masked-secret step fully populated.

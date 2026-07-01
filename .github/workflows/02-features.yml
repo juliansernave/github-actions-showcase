@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # Named environment: gates the job and exposes environment-scoped secrets.
-    # Create "staging" in Settings → Environments; add EXAMPLE_TOKEN as an environment secret.
+    # example_token is defined in the "staging" environment, and only workflows targeting that environment can read it.
     environment: staging             # ← NAMED ENVIRONMENT
 
     permissions:
